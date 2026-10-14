@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseLog — Blood Pressure Calendar & Tracker</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        dark: {
+                            bg: '#0B0F17',
+                            card: '#111827',
+                            elevated: '#1E293B',
+                            border: 'rgba(255, 255, 255, 0.08)'
+                        },
+                        light: {
+                            bg: '#F8FAFC',
+                            card: '#FFFFFF',
+                            elevated: '#F1F5F9',
+                            border: '#E2E8F0'
+                        }
+                    },
+                    boxShadow: {
+                        'bento-light': '0 2px 10px -2px rgba(0, 0, 0, 0.03), 0 1px 3px -1px rgba(0, 0, 0, 0.02)',
+                        'bento-dark': '0 8px 30px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg-primary: #F8FAFC;
+            --card-surface: #FFFFFF;
+            --text-primary: #0F172A;
+            --border-subtle: #E2E8F0;
+            --chart-grid: #CBD5E1;
+            --chart-text: #64748B;
+        }
+        html.dark {
+            --bg-primary: #0B0F17;
+            --card-surface: #111827;
+            --text-primary: #F8FAFC;
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --chart-grid: #334155;
+            --chart-text: #94A3B8;
+            color-scheme: dark;
+        }
+        html:not(.dark) {
+            color-scheme: light;
+        }
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+        /* Hide number input arrows for cleaner UI */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.55);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-rose-500 selection:text-white">
+
+    <!-- Ambient Top Glow for Dark Mode -->
+    <div class="fixed inset-x-0 top-0 h-64 bg-gradient-to-b from-rose-500/5 via-indigo-500/5 to-transparent pointer-events-none hidden dark:block -z-10"></div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Custom Modal Container -->
+    <div id="modal-overlay" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4 opacity-0 transition-opacity duration-200">
+        <div id="modal-content" class="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-2xl max-w-md w-full p-6 transform scale-95 transition-transform duration-200">
+            <h3 id="modal-title" class="text-lg font-semibold text-slate-900 dark:text-white mb-2">Confirm Action</h3>
+            <p id="modal-body" class="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed"></p>
+            <div class="flex items-center justify-end gap-3" id="modal-actions">
+                <button id="modal-cancel" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+                <button id="modal-confirm" class="px-4 py-2 rounded-xl text-sm font-medium bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-600/20 transition-all">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Bar -->
+    <header class="sticky top-0 z-30 bg-[#F8FAFC]/85 dark:bg-[#0B0F17]/80 backdrop-blur-xl border-b border-slate-200/80 dark:border-white/[0.08] transition-colors">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+            <!-- Brand -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 to-rose-400 flex items-center justify-center text-white shadow-md shadow-rose-500/25">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white">PulseLog</h1>
+                        <span class="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Local Storage
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">3x Daily Blood Pressure Calendar</p>
+                </div>
+            </div>
+
+            <!-- Theme & Data Management Actions -->
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- Dark / Light Mode Toggle Button -->
+                <button onclick="toggleTheme()" id="theme-toggle-btn" title="Switch between Dark and Light mode" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-200/80 dark:border-white/10 shadow-2xs transition-all">
+                    <!-- Sun Icon (shown in Dark Mode) -->
+                    <svg id="theme-icon-sun" class="w-4 h-4 text-amber-400 hidden dark:block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                    <!-- Moon Icon (shown in Light Mode) -->
+                    <svg id="theme-icon-moon" class="w-4 h-4 text-indigo-600 block dark:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                    </svg>
+                    <span id="theme-toggle-label" class="hidden sm:inline">Light</span>
+                </button>
+
+                <div class="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-0.5"></div>
+
+                <button onclick="loadDemoDataConfirm()" title="Load sample readings to test the app" class="px-2.5 sm:px-3 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-800/80 border border-transparent hover:border-slate-200/80 dark:hover:border-white/10 transition-all">
+                    <span class="hidden md:inline">Sample Data</span>
+                    <span class="md:hidden">Demo</span>
+                </button>
+
+                <button onclick="exportCSV()" title="Download CSV for Excel or Doctor" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-200/80 dark:border-white/10 shadow-2xs transition-all">
+                    <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span>CSV</span>
+                </button>
+
+                <button onclick="exportJSON()" title="Backup all data as JSON file" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-200/80 dark:border-white/10 shadow-2xs transition-all">
+                    <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    <span class="hidden sm:inline">Backup</span>
+                </button>
+
+                <label title="Restore data from JSON file" class="cursor-pointer flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-200/80 dark:border-white/10 shadow-2xs transition-all">
+                    <svg class="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                    </svg>
+                    <span class="hidden sm:inline">Restore</span>
+                    <input type="file" id="import-json-input" accept=".json" class="hidden" onchange="importJSON(event)">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Top Summary Bento Row (4 Cards) -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- 7-Day Average Card -->
+            <div class="bg-white dark:bg-[#111827] rounded-3xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark flex flex-col justify-between transition-colors">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Last 7 Days Avg</span>
+                    <span id="avg-7d-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">No data</span>
+                </div>
+                <div class="my-3 flex items-baseline gap-2">
+                    <span id="avg-7d-bp" class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">— / —</span>
+                    <span class="text-xs font-medium text-slate-400 dark:text-slate-500">mmHg</span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2.5 border-t border-slate-100 dark:border-white/[0.06]">
+                    <span id="avg-7d-pulse">Pulse: — BPM</span>
+                    <span id="avg-7d-count">0 readings</span>
+                </div>
+            </div>
+
+            <!-- Selected Month Average Card -->
+            <div class="bg-white dark:bg-[#111827] rounded-3xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark flex flex-col justify-between transition-colors">
+                <div class="flex items-center justify-between">
+                    <span id="avg-month-title" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Month Avg</span>
+                    <span id="avg-month-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">No data</span>
+                </div>
+                <div class="my-3 flex items-baseline gap-2">
+                    <span id="avg-month-bp" class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">— / —</span>
+                    <span class="text-xs font-medium text-slate-400 dark:text-slate-500">mmHg</span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2.5 border-t border-slate-100 dark:border-white/[0.06]">
+                    <span id="avg-month-pulse">Pulse: — BPM</span>
+                    <span id="avg-month-count">0 readings</span>
+                </div>
+            </div>
+
+            <!-- Time-of-Day Breakdown Card -->
+            <div class="bg-white dark:bg-[#111827] rounded-3xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark flex flex-col justify-between transition-colors">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Month by Slot</span>
+                    <span id="month-completion-rate" class="text-[11px] font-medium text-slate-400 dark:text-slate-500">SYS / DIA</span>
+                </div>
+                <div class="space-y-2 text-xs">
+                    <div class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-amber-50/70 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/20">
+                        <span class="font-medium text-slate-700 dark:text-amber-200/90 flex items-center gap-1.5">☀️ Morning</span>
+                        <span id="slot-avg-morning" class="font-semibold text-slate-900 dark:text-white">— / —</span>
+                    </div>
+                    <div class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-sky-50/70 dark:bg-sky-500/10 border border-sky-200/60 dark:border-sky-500/20">
+                        <span class="font-medium text-slate-700 dark:text-sky-200/90 flex items-center gap-1.5">🌤️ Afternoon</span>
+                        <span id="slot-avg-afternoon" class="font-semibold text-slate-900 dark:text-white">— / —</span>
+                    </div>
+                    <div class="flex items-center justify-between py-1.5 px-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-500/10 border border-indigo-200/60 dark:border-indigo-500/20">
+                        <span class="font-medium text-slate-700 dark:text-indigo-200/90 flex items-center gap-1.5">🌙 Evening</span>
+                        <span id="slot-avg-evening" class="font-semibold text-slate-900 dark:text-white">— / —</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AHA Reference Scale Card -->
+            <div class="bg-white dark:bg-[#111827] rounded-3xl p-5 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark flex flex-col justify-between transition-colors">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">BP Categories</span>
+                    <span class="text-[11px] text-slate-400 dark:text-slate-500">AHA Scale</span>
+                </div>
+                <div class="space-y-1.5 text-xs">
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2 text-slate-600 dark:text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50"></span>Normal</span>
+                        <span class="font-medium text-slate-700 dark:text-slate-400">&lt;120 &amp; &lt;80</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2 text-slate-600 dark:text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-xs shadow-amber-400/50"></span>Elevated</span>
+                        <span class="font-medium text-slate-700 dark:text-slate-400">120–129 &amp; &lt;80</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2 text-slate-600 dark:text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-xs shadow-orange-500/50"></span>High Stage 1</span>
+                        <span class="font-medium text-slate-700 dark:text-slate-400">130–139 or 80–89</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2 text-slate-600 dark:text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-xs shadow-rose-500/50"></span>High Stage 2</span>
+                        <span class="font-medium text-slate-700 dark:text-slate-400">≥140 or ≥90</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2 text-slate-600 dark:text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse"></span>Crisis</span>
+                        <span class="font-medium text-rose-600 dark:text-rose-400">&gt;180 or &gt;120</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Primary Workspace: Calendar (Left 7/8 cols) + Daily 3-Slot Log (Right 5/4 cols) -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- Left Column: Interactive Monthly Calendar + Trend Chart -->
+            <div class="lg:col-span-7 xl:col-span-8 space-y-6">
+                
+                <!-- Calendar Bento Card -->
+                <div class="bg-white dark:bg-[#111827] rounded-3xl p-4 sm:p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark transition-colors">
+                    <!-- Calendar Header Controls -->
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+                        <div class="flex items-center gap-2">
+                            <h2 id="calendar-month-label" class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">October 2026</h2>
+                            <button onclick="jumpToToday()" class="ml-2 px-3 py-1 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-transparent dark:border-white/5 transition-colors">
+                                Today
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200/60 dark:border-white/[0.07]">
+                            <button onclick="changeMonth(-1)" aria-label="Previous Month" class="p-2 rounded-xl hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                                </svg>
+                            </button>
+                            <input type="month" id="month-picker" onchange="onMonthPickerChange(event)" class="bg-transparent text-xs font-medium text-slate-700 dark:text-slate-200 px-2 py-1 focus:outline-none cursor-pointer">
+                            <button onclick="changeMonth(1)" aria-label="Next Month" class="p-2 rounded-xl hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Days of Week Header -->
+                    <div class="grid grid-cols-7 gap-1.5 sm:gap-2 mb-2 text-center">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 py-1">Mon</div>
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 py-1">Tue</div>
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 py-1">Wed</div>
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 py-1">Thu</div>
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 py-1">Fri</div>
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 py-1">Sat</div>
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 py-1">Sun</div>
+                    </div>
+
+                    <!-- Calendar Days Grid -->
+                    <div id="calendar-grid" class="grid grid-cols-7 gap-1.5 sm:gap-2">
+                        <!-- Populated dynamically by JS -->
+                    </div>
+
+                    <!-- Calendar Legend Footer -->
+                    <div class="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <span class="font-medium text-slate-400 dark:text-slate-500">3 Daily Slots:</span>
+                            <span class="inline-flex items-center gap-1">☀️ Morning</span>
+                            <span class="inline-flex items-center gap-1">🌤️ Afternoon</span>
+                            <span class="inline-flex items-center gap-1">🌙 Evening</span>
+                        </div>
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Normal</span>
+                            <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span>Elevated</span>
+                            <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-orange-500"></span>Stage 1</span>
+                            <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span>Stage 2</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monthly Trend Chart Card -->
+                <div class="bg-white dark:bg-[#111827] rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark transition-colors">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900 dark:text-white">Monthly Blood Pressure Trend</h3>
+                            <p class="text-xs text-slate-500 dark:text-slate-400">Daily average Systolic &amp; Diastolic readings for the selected month</p>
+                        </div>
+                        <div class="flex items-center gap-4 text-xs font-medium">
+                            <span class="flex items-center gap-1.5 text-rose-600 dark:text-rose-400"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>Systolic</span>
+                            <span class="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>Diastolic</span>
+                        </div>
+                    </div>
+
+                    <!-- SVG Trend Chart Container -->
+                    <div id="trend-chart-container" class="w-full h-48 bg-slate-50/70 dark:bg-[#0B0F17]/70 rounded-2xl border border-slate-100 dark:border-white/[0.06] flex items-center justify-center overflow-hidden p-2">
+                        <!-- Rendered via JS -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Selected Day 3-Times-Per-Day Input Panel -->
+            <div id="day-editor-panel" class="lg:col-span-5 xl:col-span-4 bg-white dark:bg-[#111827] rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark lg:sticky lg:top-22 transition-colors">
+                <!-- Selected Date Header -->
+                <div class="flex items-start justify-between gap-2 pb-4 border-b border-slate-100 dark:border-white/[0.06]">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400" id="selected-date-relative">Selected Day</span>
+                            <span id="selected-day-avg-badge" class="hidden px-2 py-0.5 rounded-full text-[11px] font-semibold"></span>
+                        </div>
+                        <h2 id="selected-date-title" class="text-xl font-bold text-slate-900 dark:text-white mt-0.5">Oct 14, 2026</h2>
+                    </div>
+
+                    <div class="flex items-center gap-1">
+                        <button onclick="shiftSelectedDay(-1)" title="Previous Day" class="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                            </svg>
+                        </button>
+                        <button onclick="shiftSelectedDay(1)" title="Next Day" class="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3 Daily Slots Form -->
+                <div class="mt-4 space-y-4">
+
+                    <!-- SLOT 1: MORNING -->
+                    <div class="p-4 rounded-2xl bg-slate-50/80 dark:bg-[#1E293B]/50 border border-slate-200/70 dark:border-white/[0.07] transition-all focus-within:bg-white dark:focus-within:bg-[#1E293B]/90 focus-within:border-slate-300 dark:focus-within:border-rose-500/40">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-base">☀️</span>
+                                <span class="text-sm font-semibold text-slate-900 dark:text-white">Morning</span>
+                                <input type="time" id="time-morning" value="08:00" onchange="onSlotInputChange('morning')" class="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-transparent border border-slate-200/70 dark:border-white/10 rounded-lg px-1.5 py-0.5 focus:outline-none focus:border-rose-500">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span id="badge-morning" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Empty</span>
+                                <button type="button" onclick="clearSlot('morning')" title="Clear Morning Slot" class="text-slate-400 hover:text-rose-500 transition-colors p-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Systolic</label>
+                                <div class="relative">
+                                    <input type="number" id="sys-morning" min="50" max="260" placeholder="120" oninput="onSlotInputChange('morning')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2.5 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">SYS</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Diastolic</label>
+                                <div class="relative">
+                                    <input type="number" id="dia-morning" min="30" max="160" placeholder="80" oninput="onSlotInputChange('morning')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2.5 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">DIA</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Pulse</label>
+                                <div class="relative">
+                                    <input type="number" id="pul-morning" min="30" max="220" placeholder="70" oninput="onSlotInputChange('morning')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">BPM</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2.5">
+                            <input type="text" id="note-morning" placeholder="Optional note (e.g., before medication)" oninput="onSlotInputChange('morning')"
+                                class="w-full px-3 py-1.5 rounded-xl bg-white/80 dark:bg-[#0B0F17]/70 border border-slate-200/80 dark:border-white/10 text-xs text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-rose-500 transition-colors">
+                        </div>
+                    </div>
+
+                    <!-- SLOT 2: AFTERNOON -->
+                    <div class="p-4 rounded-2xl bg-slate-50/80 dark:bg-[#1E293B]/50 border border-slate-200/70 dark:border-white/[0.07] transition-all focus-within:bg-white dark:focus-within:bg-[#1E293B]/90 focus-within:border-slate-300 dark:focus-within:border-rose-500/40">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-base">🌤️</span>
+                                <span class="text-sm font-semibold text-slate-900 dark:text-white">Afternoon</span>
+                                <input type="time" id="time-afternoon" value="14:00" onchange="onSlotInputChange('afternoon')" class="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-transparent border border-slate-200/70 dark:border-white/10 rounded-lg px-1.5 py-0.5 focus:outline-none focus:border-rose-500">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span id="badge-afternoon" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Empty</span>
+                                <button type="button" onclick="clearSlot('afternoon')" title="Clear Afternoon Slot" class="text-slate-400 hover:text-rose-500 transition-colors p-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Systolic</label>
+                                <div class="relative">
+                                    <input type="number" id="sys-afternoon" min="50" max="260" placeholder="120" oninput="onSlotInputChange('afternoon')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2.5 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">SYS</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Diastolic</label>
+                                <div class="relative">
+                                    <input type="number" id="dia-afternoon" min="30" max="160" placeholder="80" oninput="onSlotInputChange('afternoon')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2.5 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">DIA</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Pulse</label>
+                                <div class="relative">
+                                    <input type="number" id="pul-afternoon" min="30" max="220" placeholder="72" oninput="onSlotInputChange('afternoon')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">BPM</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2.5">
+                            <input type="text" id="note-afternoon" placeholder="Optional note (e.g., after lunch / walk)" oninput="onSlotInputChange('afternoon')"
+                                class="w-full px-3 py-1.5 rounded-xl bg-white/80 dark:bg-[#0B0F17]/70 border border-slate-200/80 dark:border-white/10 text-xs text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-rose-500 transition-colors">
+                        </div>
+                    </div>
+
+                    <!-- SLOT 3: EVENING -->
+                    <div class="p-4 rounded-2xl bg-slate-50/80 dark:bg-[#1E293B]/50 border border-slate-200/70 dark:border-white/[0.07] transition-all focus-within:bg-white dark:focus-within:bg-[#1E293B]/90 focus-within:border-slate-300 dark:focus-within:border-rose-500/40">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-base">🌙</span>
+                                <span class="text-sm font-semibold text-slate-900 dark:text-white">Evening</span>
+                                <input type="time" id="time-evening" value="21:00" onchange="onSlotInputChange('evening')" class="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-transparent border border-slate-200/70 dark:border-white/10 rounded-lg px-1.5 py-0.5 focus:outline-none focus:border-rose-500">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span id="badge-evening" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Empty</span>
+                                <button type="button" onclick="clearSlot('evening')" title="Clear Evening Slot" class="text-slate-400 hover:text-rose-500 transition-colors p-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Systolic</label>
+                                <div class="relative">
+                                    <input type="number" id="sys-evening" min="50" max="260" placeholder="120" oninput="onSlotInputChange('evening')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2.5 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">SYS</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Diastolic</label>
+                                <div class="relative">
+                                    <input type="number" id="dia-evening" min="30" max="160" placeholder="80" oninput="onSlotInputChange('evening')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2.5 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">DIA</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Pulse</label>
+                                <div class="relative">
+                                    <input type="number" id="pul-evening" min="30" max="220" placeholder="68" oninput="onSlotInputChange('evening')"
+                                        class="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:border-rose-500 dark:focus:border-rose-500 transition-colors">
+                                    <span class="absolute right-2 top-2.5 text-[10px] text-slate-400 dark:text-slate-500 pointer-events-none">BPM</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2.5">
+                            <input type="text" id="note-evening" placeholder="Optional note (e.g., before bed)" oninput="onSlotInputChange('evening')"
+                                class="w-full px-3 py-1.5 rounded-xl bg-white/80 dark:bg-[#0B0F17]/70 border border-slate-200/80 dark:border-white/10 text-xs text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-rose-500 transition-colors">
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Action Buttons & Auto-Save Indicator -->
+                <div class="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-3">
+                    <button type="button" onclick="clearEntireDay()" class="px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
+                        Clear Day
+                    </button>
+                    <button type="button" onclick="saveCurrentDay(true)" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white active:scale-[0.99] transition-all shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span>Save Readings</span>
+                    </button>
+                </div>
+                <p class="text-[11px] text-center text-slate-400 dark:text-slate-500 mt-2.5">
+                    Auto-saved instantaneously to your browser's <code class="font-mono">localStorage</code>.
+                </p>
+            </div>
+
+        </section>
+
+        <!-- Monthly History Log Table Card -->
+        <section class="bg-white dark:bg-[#111827] rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-bento-light dark:shadow-bento-dark transition-colors">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Detailed Monthly Log</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">All recorded Morning, Afternoon, and Evening readings for the currently viewed month</p>
+                </div>
+                <button onclick="confirmEraseAllData()" class="text-xs font-medium text-rose-600 dark:text-rose-400 hover:text-rose-500 hover:underline">
+                    Reset All Storage Data
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-100 dark:border-white/[0.06] text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            <th class="py-3 px-3">Date</th>
+                            <th class="py-3 px-3">☀️ Morning</th>
+                            <th class="py-3 px-3">🌤️ Afternoon</th>
+                            <th class="py-3 px-3">🌙 Evening</th>
+                            <th class="py-3 px-3">Daily Avg</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthly-history-tbody" class="divide-y divide-slate-100 dark:divide-white/[0.06] text-xs">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Minimal Footer -->
+    <footer class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-slate-400 dark:text-slate-500 border-t border-slate-200/50 dark:border-white/[0.06] mt-6">
+        <p>PulseLog — Stored 100% locally in your browser via <code class="text-slate-600 dark:text-slate-300 font-mono">localStorage</code>. For informational tracking only; consult a physician for medical advice.</p>
+    </footer>
+
+    <!-- Application JavaScript -->
+    <script>
+        /**************************************************************
+         * STATE & CONSTANTS
+         **************************************************************/
+        const STORAGE_KEY = 'pulselog_bp_records_v1';
+        const THEME_STORAGE_KEY = 'pulselog_theme_v1';
+        const SLOTS = ['morning', 'afternoon', 'evening'];
+        const DEFAULT_TIMES = { morning: '08:00', afternoon: '14:00', evening: '21:00' };
+        const MONTH_NAMES = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+
+        // Master dictionary: { "YYYY-MM-DD": { morning: {sys, dia, pul, time, note}, afternoon: {...}, evening: {...} } }
+        let bpData = {};
+
+        // Currently viewed month/year and selected date string ("YYYY-MM-DD")
+        const todayObj = new Date();
+        let currentYear = todayObj.getFullYear();
+        let currentMonth = todayObj.getMonth(); // 0-indexed (0 = Jan)
+        let selectedDateStr = formatDateKey(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
+
+        /**************************************************************
+         * INITIALIZATION & THEME SYSTEM
+         **************************************************************/
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            loadFromLocalStorage();
+            renderAll();
+        });
+
+        function initTheme() {
+            try {
+                const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+                // Default to Dark Mode unless user explicitly chose 'light'
+                if (savedTheme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                } else {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch (e) {
+                document.documentElement.classList.add('dark');
+            }
+            updateThemeButtonLabel();
+        }
+
+        function toggleTheme() {
+            const htmlEl = document.documentElement;
+            const isDarkNow = htmlEl.classList.toggle('dark');
+            try {
+                localStorage.setItem(THEME_STORAGE_KEY, isDarkNow ? 'dark' : 'light');
+            } catch (e) {}
+            updateThemeButtonLabel();
+            renderTrendChart();
+        }
+
+        function updateThemeButtonLabel() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const labelEl = document.getElementById('theme-toggle-label');
+            if (labelEl) {
+                labelEl.textContent = isDark ? 'Light' : 'Dark';
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    bpData = JSON.parse(raw) || {};
+                }
+            } catch (err) {
+                console.error('Error reading from localStorage:', err);
+                bpData = {};
+            }
+        }
+
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(bpData));
+            } catch (err) {
+                console.error('Error saving to localStorage:', err);
+                showToast('Storage error: Could not save data.', 'error');
+            }
+        }
+
+        /**************************************************************
+         * DATE UTILITIES
+         **************************************************************/
+        function formatDateKey(year, monthIndex, day) {
+            const m = String(monthIndex + 1).padStart(2, '0');
+            const d = String(day).padStart(2, '0');
+            return `${year}-${m}-${d}`;
+        }
+
+        function parseDateKey(dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        }
+
+        function formatHumanDate(dateStr) {
+            const date = parseDateKey(dateStr);
+            return date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+        }
+
+        function getRelativeDayLabel(dateStr) {
+            const todayKey = formatDateKey(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
+            if (dateStr === todayKey) return 'Today';
+            const sel = parseDateKey(dateStr);
+            const tod = parseDateKey(todayKey);
+            const diffDays = Math.round((sel - tod) / (1000 * 60 * 60 * 24));
+            if (diffDays === -1) return 'Yesterday';
+            if (diffDays === 1) return 'Tomorrow';
+            if (diffDays < 0) return `${Math.abs(diffDays)} days ago`;
+            return `In ${diffDays} days`;
+        }
+
+        /**************************************************************
+         * BLOOD PRESSURE CLASSIFICATION (AHA GUIDELINES)
+         **************************************************************/
+        function classifyBP(sys, dia) {
+            const s = Number(sys);
+            const d = Number(dia);
+            if (!s || !d || isNaN(s) || isNaN(d)) return null;
+
+            if (s > 180 || d > 120) {
+                return {
+                    label: 'Crisis',
+                    dotClass: 'bg-red-600 shadow-xs shadow-red-500/60',
+                    badgeClass: 'bg-red-100 text-red-800 border border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30',
+                    cellPillClass: 'bg-red-50 text-red-700 border-red-200/80 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30'
+                };
+            }
+            if (s >= 140 || d >= 90) {
+                return {
+                    label: 'Stage 2',
+                    dotClass: 'bg-rose-500 shadow-xs shadow-rose-500/50',
+                    badgeClass: 'bg-rose-100 text-rose-800 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30',
+                    cellPillClass: 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/25'
+                };
+            }
+            if ((s >= 130 && s <= 139) || (d >= 80 && d <= 89)) {
+                return {
+                    label: 'Stage 1',
+                    dotClass: 'bg-orange-500 shadow-xs shadow-orange-500/50',
+                    badgeClass: 'bg-orange-100 text-orange-800 border border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
+                    cellPillClass: 'bg-orange-50 text-orange-700 border-orange-200/80 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/25'
+                };
+            }
+            if (s >= 120 && s <= 129 && d < 80) {
+                return {
+                    label: 'Elevated',
+                    dotClass: 'bg-amber-400 shadow-xs shadow-amber-400/50',
+                    badgeClass: 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-400/15 dark:text-amber-300 dark:border-amber-400/30',
+                    cellPillClass: 'bg-amber-50 text-amber-800 border-amber-200/80 dark:bg-amber-400/15 dark:text-amber-300 dark:border-amber-400/25'
+                };
+            }
+            if (s < 90 || d < 60) {
+                return {
+                    label: 'Low',
+                    dotClass: 'bg-sky-500 shadow-xs shadow-sky-500/50',
+                    badgeClass: 'bg-sky-100 text-sky-800 border border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30',
+                    cellPillClass: 'bg-sky-50 text-sky-700 border-sky-200/80 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25'
+                };
+            }
+            return {
+                label: 'Normal',
+                dotClass: 'bg-emerald-500 shadow-xs shadow-emerald-500/50',
+                badgeClass: 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
+                cellPillClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25'
+            };
+        }
+
+        function isSlotValid(slotObj) {
+            if (!slotObj) return false;
+            const s = Number(slotObj.sys);
+            const d = Number(slotObj.dia);
+            return s > 0 && d > 0;
+        }
+
+        /**************************************************************
+         * MASTER RENDER FUNCTION
+         **************************************************************/
+        function renderAll() {
+            renderCalendar();
+            renderSelectedDayForm();
+            renderSummaryCards();
+            renderTrendChart();
+            renderMonthlyTable();
+        }
+
+        /**************************************************************
+         * CALENDAR RENDERING & NAVIGATION
+         **************************************************************/
+        function renderCalendar() {
+            const monthLabel = document.getElementById('calendar-month-label');
+            monthLabel.textContent = `${MONTH_NAMES[currentMonth]} ${currentYear}`;
+
+            const monthPicker = document.getElementById('month-picker');
+            monthPicker.value = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+
+            // First day of the month (convert Sunday=0 to Monday=0..Sunday=6)
+            const firstDayIndex = (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7;
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const todayKey = formatDateKey(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
+
+            // Blank filler cells before the 1st of the month
+            for (let i = 0; i < firstDayIndex; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = 'h-20 sm:h-28 rounded-2xl bg-slate-50/50 dark:bg-white/[0.015] border border-transparent';
+                grid.appendChild(emptyCell);
+            }
+
+            // Actual day cells
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateKey = formatDateKey(currentYear, currentMonth, day);
+                const dayRecord = bpData[dateKey] || {};
+                const isSelected = dateKey === selectedDateStr;
+                const isToday = dateKey === todayKey;
+
+                const cell = document.createElement('button');
+                cell.type = 'button';
+                cell.onclick = () => selectDate(dateKey);
+
+                let baseClasses = 'group relative h-20 sm:h-28 p-1.5 sm:p-2 rounded-2xl border text-left flex flex-col justify-between transition-all focus:outline-none ';
+                if (isSelected) {
+                    baseClasses += 'bg-white dark:bg-[#1E293B] border-slate-900 dark:border-rose-500 ring-2 ring-slate-900/10 dark:ring-rose-500/25 shadow-sm';
+                } else if (isToday) {
+                    baseClasses += 'bg-rose-50/40 dark:bg-rose-500/[0.07] border-rose-300 dark:border-rose-500/40 hover:border-rose-400 dark:hover:border-rose-400';
+                } else {
+                    baseClasses += 'bg-white dark:bg-[#0B0F17]/60 border-slate-200/70 dark:border-white/[0.06] hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-50/40 dark:hover:bg-[#1E293B]/40';
+                }
+                cell.className = baseClasses;
+
+                // Top Row: Day number + 3 slot status dots
+                const topRow = document.createElement('div');
+                topRow.className = 'w-full flex items-center justify-between';
+
+                const dayNumSpan = document.createElement('span');
+                dayNumSpan.className = `text-xs sm:text-sm font-semibold inline-flex items-center justify-center ${
+                    isToday
+                        ? 'w-6 h-6 rounded-full bg-rose-600 text-white shadow-xs shadow-rose-600/40'
+                        : isSelected
+                        ? 'text-slate-900 dark:text-white'
+                        : 'text-slate-700 dark:text-slate-300'
+                }`;
+                dayNumSpan.textContent = day;
+
+                // 3 Dots for Morning, Afternoon, Evening
+                const dotsContainer = document.createElement('div');
+                dotsContainer.className = 'flex items-center gap-1';
+
+                SLOTS.forEach(slot => {
+                    const slotData = dayRecord[slot];
+                    const dot = document.createElement('span');
+                    if (isSlotValid(slotData)) {
+                        const cat = classifyBP(slotData.sys, slotData.dia);
+                        dot.className = `w-2 h-2 rounded-full ${cat ? cat.dotClass : 'bg-slate-400'}`;
+                    } else {
+                        dot.className = 'w-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700';
+                    }
+                    dotsContainer.appendChild(dot);
+                });
+
+                topRow.appendChild(dayNumSpan);
+                topRow.appendChild(dotsContainer);
+                cell.appendChild(topRow);
+
+                // Bottom Area: Compact readings pills on desktop, or mini summary on mobile
+                const slotsList = document.createElement('div');
+                slotsList.className = 'w-full space-y-1 overflow-hidden';
+
+                const slotIcons = { morning: '☀️', afternoon: '🌤️', evening: '🌙' };
+                let recordedCount = 0;
+
+                SLOTS.forEach(slot => {
+                    const sData = dayRecord[slot];
+                    if (isSlotValid(sData)) {
+                        recordedCount++;
+                        const cat = classifyBP(sData.sys, sData.dia);
+                        const pill = document.createElement('div');
+                        pill.className = `hidden sm:flex items-center justify-between px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${cat.cellPillClass} leading-none`;
+                        pill.innerHTML = `<span>${slotIcons[slot]}</span><span>${sData.sys}/${sData.dia}</span>`;
+                        slotsList.appendChild(pill);
+                    }
+                });
+
+                // On small mobile screens, show the day's average if readings exist
+                if (recordedCount > 0) {
+                    const avgObj = computeDayAverage(dayRecord);
+                    if (avgObj) {
+                        const mobilePill = document.createElement('div');
+                        const cat = classifyBP(avgObj.sys, avgObj.dia);
+                        mobilePill.className = `sm:hidden text-[10px] font-semibold px-1 py-0.5 rounded text-center truncate border ${cat.cellPillClass}`;
+                        mobilePill.textContent = `${avgObj.sys}/${avgObj.dia}`;
+                        slotsList.appendChild(mobilePill);
+                    }
+                }
+
+                cell.appendChild(slotsList);
+                grid.appendChild(cell);
+            }
+        }
+
+        function selectDate(dateStr) {
+            selectedDateStr = dateStr;
+            const dObj = parseDateKey(dateStr);
+            if (dObj.getFullYear() !== currentYear || dObj.getMonth() !== currentMonth) {
+                currentYear = dObj.getFullYear();
+                currentMonth = dObj.getMonth();
+            }
+            renderAll();
+        }
+
+        function changeMonth(delta) {
+            const newDate = new Date(currentYear, currentMonth + delta, 1);
+            currentYear = newDate.getFullYear();
+            currentMonth = newDate.getMonth();
+            renderAll();
+        }
+
+        function onMonthPickerChange(e) {
+            const val = e.target.value;
+            if (!val) return;
+            const [y, m] = val.split('-').map(Number);
+            currentYear = y;
+            currentMonth = m - 1;
+            renderAll();
+        }
+
+        function jumpToToday() {
+            const now = new Date();
+            currentYear = now.getFullYear();
+            currentMonth = now.getMonth();
+            selectedDateStr = formatDateKey(currentYear, currentMonth, now.getDate());
+            renderAll();
+        }
+
+        function shiftSelectedDay(deltaDays) {
+            const curr = parseDateKey(selectedDateStr);
+            curr.setDate(curr.getDate() + deltaDays);
+            selectDate(formatDateKey(curr.getFullYear(), curr.getMonth(), curr.getDate()));
+        }
+
+        /**************************************************************
+         * SELECTED DAY 3-SLOTS FORM LOGIC
+         **************************************************************/
+        function renderSelectedDayForm() {
+            document.getElementById('selected-date-title').textContent = formatHumanDate(selectedDateStr);
+            document.getElementById('selected-date-relative').textContent = getRelativeDayLabel(selectedDateStr);
+
+            const dayRecord = bpData[selectedDateStr] || {};
+
+            SLOTS.forEach(slot => {
+                const sData = dayRecord[slot] || {};
+                document.getElementById(`sys-${slot}`).value = sData.sys || '';
+                document.getElementById(`dia-${slot}`).value = sData.dia || '';
+                document.getElementById(`pul-${slot}`).value = sData.pul || '';
+                document.getElementById(`time-${slot}`).value = sData.time || DEFAULT_TIMES[slot];
+                document.getElementById(`note-${slot}`).value = sData.note || '';
+                updateSlotBadge(slot, sData.sys, sData.dia);
+            });
+
+            updateSelectedDayHeaderBadge();
+        }
+
+        function updateSlotBadge(slot, sys, dia) {
+            const badge = document.getElementById(`badge-${slot}`);
+            const cat = classifyBP(sys, dia);
+            if (!cat) {
+                badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
+                badge.textContent = 'Empty';
+            } else {
+                badge.className = `px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${cat.badgeClass}`;
+                badge.textContent = cat.label;
+            }
+        }
+
+        function updateSelectedDayHeaderBadge() {
+            const dayRecord = bpData[selectedDateStr] || {};
+            const avg = computeDayAverage(dayRecord);
+            const headerBadge = document.getElementById('selected-day-avg-badge');
+
+            if (avg) {
+                const cat = classifyBP(avg.sys, avg.dia);
+                headerBadge.className = `inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${cat.badgeClass}`;
+                headerBadge.textContent = `Avg: ${avg.sys}/${avg.dia}`;
+            } else {
+                headerBadge.className = 'hidden';
+            }
+        }
+
+        function onSlotInputChange(slot) {
+            const sys = document.getElementById(`sys-${slot}`).value.trim();
+            const dia = document.getElementById(`dia-${slot}`).value.trim();
+            updateSlotBadge(slot, sys, dia);
+            saveCurrentDay(false);
+        }
+
+        function saveCurrentDay(showNotification = false) {
+            if (!bpData[selectedDateStr]) {
+                bpData[selectedDateStr] = {};
+            }
+
+            let hasAnyData = false;
+
+            SLOTS.forEach(slot => {
+                const sys = document.getElementById(`sys-${slot}`).value.trim();
+                const dia = document.getElementById(`dia-${slot}`).value.trim();
+                const pul = document.getElementById(`pul-${slot}`).value.trim();
+                const time = document.getElementById(`time-${slot}`).value.trim();
+                const note = document.getElementById(`note-${slot}`).value.trim();
+
+                if (sys || dia || pul || note) {
+                    bpData[selectedDateStr][slot] = {
+                        sys: sys ? Number(sys) : '',
+                        dia: dia ? Number(dia) : '',
+                        pul: pul ? Number(pul) : '',
+                        time: time || DEFAULT_TIMES[slot],
+                        note: note
+                    };
+                    hasAnyData = true;
+                } else {
+                    delete bpData[selectedDateStr][slot];
+                }
+            });
+
+            if (!hasAnyData) {
+                delete bpData[selectedDateStr];
+            }
+
+            saveToLocalStorage();
+            renderCalendar();
+            renderSummaryCards();
+            renderTrendChart();
+            renderMonthlyTable();
+            updateSelectedDayHeaderBadge();
+
+            if (showNotification) {
+                showToast(`Saved readings for ${formatHumanDate(selectedDateStr)}`);
+            }
+        }
+
+        function clearSlot(slot) {
+            document.getElementById(`sys-${slot}`).value = '';
+            document.getElementById(`dia-${slot}`).value = '';
+            document.getElementById(`pul-${slot}`).value = '';
+            document.getElementById(`time-${slot}`).value = DEFAULT_TIMES[slot];
+            document.getElementById(`note-${slot}`).value = '';
+            updateSlotBadge(slot, '', '');
+            saveCurrentDay(false);
+            showToast(`Cleared ${slot} reading`);
+        }
+
+        function clearEntireDay() {
+            delete bpData[selectedDateStr];
+            saveToLocalStorage();
+            renderAll();
+            showToast(`Cleared all readings for ${formatHumanDate(selectedDateStr)}`);
+        }
+
+        /**************************************************************
+         * SUMMARY & INSIGHTS CALCULATIONS
+         **************************************************************/
+        function computeDayAverage(dayRecord) {
+            if (!dayRecord) return null;
+            let sysSum = 0, diaSum = 0, pulSum = 0, bpCount = 0, pulCount = 0;
+
+            SLOTS.forEach(slot => {
+                const sData = dayRecord[slot];
+                if (isSlotValid(sData)) {
+                    sysSum += Number(sData.sys);
+                    diaSum += Number(sData.dia);
+                    bpCount++;
+                    if (sData.pul && Number(sData.pul) > 0) {
+                        pulSum += Number(sData.pul);
+                        pulCount++;
+                    }
+                }
+            });
+
+            if (bpCount === 0) return null;
+            return {
+                sys: Math.round(sysSum / bpCount),
+                dia: Math.round(diaSum / bpCount),
+                pul: pulCount > 0 ? Math.round(pulSum / pulCount) : null,
+                count: bpCount
+            };
+        }
+
+        function renderSummaryCards() {
+            const emptyBadgeClass = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
+
+            // 1. Last 7 Days Average
+            let s7 = 0, d7 = 0, p7 = 0, c7 = 0, pc7 = 0;
+            for (let i = 0; i < 7; i++) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const key = formatDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+                const rec = bpData[key];
+                if (rec) {
+                    SLOTS.forEach(slot => {
+                        if (isSlotValid(rec[slot])) {
+                            s7 += Number(rec[slot].sys);
+                            d7 += Number(rec[slot].dia);
+                            c7++;
+                            if (rec[slot].pul && Number(rec[slot].pul) > 0) {
+                                p7 += Number(rec[slot].pul);
+                                pc7++;
+                            }
+                        }
+                    });
+                }
+            }
+
+            const bp7El = document.getElementById('avg-7d-bp');
+            const pul7El = document.getElementById('avg-7d-pulse');
+            const cnt7El = document.getElementById('avg-7d-count');
+            const bdg7El = document.getElementById('avg-7d-badge');
+
+            if (c7 > 0) {
+                const avgS = Math.round(s7 / c7);
+                const avgD = Math.round(d7 / c7);
+                const cat = classifyBP(avgS, avgD);
+                bp7El.textContent = `${avgS} / ${avgD}`;
+                pul7El.textContent = `Pulse: ${pc7 > 0 ? Math.round(p7 / pc7) : '—'} BPM`;
+                cnt7El.textContent = `${c7} reading${c7 === 1 ? '' : 's'}`;
+                bdg7El.className = `px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${cat.badgeClass}`;
+                bdg7El.textContent = cat.label;
+            } else {
+                bp7El.textContent = '— / —';
+                pul7El.textContent = 'Pulse: — BPM';
+                cnt7El.textContent = '0 readings';
+                bdg7El.className = emptyBadgeClass;
+                bdg7El.textContent = 'No data';
+            }
+
+            // 2. Selected Month Average & Slot Breakdown
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            let sm = 0, dm = 0, pm = 0, cm = 0, pcm = 0, loggedDaysCount = 0;
+            const slotTotals = {
+                morning: { s: 0, d: 0, c: 0 },
+                afternoon: { s: 0, d: 0, c: 0 },
+                evening: { s: 0, d: 0, c: 0 }
+            };
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const key = formatDateKey(currentYear, currentMonth, day);
+                const rec = bpData[key];
+                if (rec) {
+                    let dayHasValid = false;
+                    SLOTS.forEach(slot => {
+                        if (isSlotValid(rec[slot])) {
+                            dayHasValid = true;
+                            const sv = Number(rec[slot].sys);
+                            const dv = Number(rec[slot].dia);
+                            sm += sv;
+                            dm += dv;
+                            cm++;
+                            slotTotals[slot].s += sv;
+                            slotTotals[slot].d += dv;
+                            slotTotals[slot].c++;
+                            if (rec[slot].pul && Number(rec[slot].pul) > 0) {
+                                pm += Number(rec[slot].pul);
+                                pcm++;
+                            }
+                        }
+                    });
+                    if (dayHasValid) loggedDaysCount++;
+                }
+            }
+
+            document.getElementById('avg-month-title').textContent = `${MONTH_NAMES[currentMonth].slice(0, 3)} ${currentYear} Avg`;
+            document.getElementById('month-completion-rate').textContent = `${loggedDaysCount}/${daysInMonth} days logged`;
+
+            const bpMEl = document.getElementById('avg-month-bp');
+            const pulMEl = document.getElementById('avg-month-pulse');
+            const cntMEl = document.getElementById('avg-month-count');
+            const bdgMEl = document.getElementById('avg-month-badge');
+
+            if (cm > 0) {
+                const avgS = Math.round(sm / cm);
+                const avgD = Math.round(dm / cm);
+                const cat = classifyBP(avgS, avgD);
+                bpMEl.textContent = `${avgS} / ${avgD}`;
+                pulMEl.textContent = `Pulse: ${pcm > 0 ? Math.round(pm / pcm) : '—'} BPM`;
+                cntMEl.textContent = `${cm} reading${cm === 1 ? '' : 's'}`;
+                bdgMEl.className = `px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${cat.badgeClass}`;
+                bdgMEl.textContent = cat.label;
+            } else {
+                bpMEl.textContent = '— / —';
+                pulMEl.textContent = 'Pulse: — BPM';
+                cntMEl.textContent = '0 readings';
+                bdgMEl.className = emptyBadgeClass;
+                bdgMEl.textContent = 'No data';
+            }
+
+            SLOTS.forEach(slot => {
+                const el = document.getElementById(`slot-avg-${slot}`);
+                const st = slotTotals[slot];
+                if (st.c > 0) {
+                    el.textContent = `${Math.round(st.s / st.c)} / ${Math.round(st.d / st.c)} mmHg`;
+                } else {
+                    el.textContent = '— / —';
+                }
+            });
+        }
+
+        /**************************************************************
+         * SVG TREND CHART FOR SELECTED MONTH (THEME ADAPTIVE)
+         **************************************************************/
+        function renderTrendChart() {
+            const container = document.getElementById('trend-chart-container');
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const points = [];
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const key = formatDateKey(currentYear, currentMonth, day);
+                const avg = computeDayAverage(bpData[key]);
+                if (avg) {
+                    points.push({ day, sys: avg.sys, dia: avg.dia, dateKey: key });
+                }
+            }
+
+            if (points.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-xs text-slate-400 dark:text-slate-500">
+                        No readings logged in ${MONTH_NAMES[currentMonth]} ${currentYear} yet. Click any day on the calendar to log a reading.
+                    </div>
+                `;
+                return;
+            }
+
+            const isDark = document.documentElement.classList.contains('dark');
+            const gridStroke = isDark ? '#334155' : '#CBD5E1';
+            const labelFill = isDark ? '#64748B' : '#94A3B8';
+            const dotStroke = isDark ? '#0B0F17' : '#FFFFFF';
+
+            const width = 700;
+            const height = 170;
+            const padLeft = 36;
+            const padRight = 18;
+            const padTop = 18;
+            const padBottom = 26;
+
+            const minVal = Math.min(55, ...points.map(p => p.dia)) - 5;
+            const maxVal = Math.max(145, ...points.map(p => p.sys)) + 5;
+
+            const getX = (day) => padLeft + ((day - 1) / Math.max(1, daysInMonth - 1)) * (width - padLeft - padRight);
+            const getY = (val) => padTop + (1 - (val - minVal) / (maxVal - minVal)) * (height - padTop - padBottom);
+
+            const sysPath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(p.day).toFixed(1)} ${getY(p.sys).toFixed(1)}`).join(' ');
+            const diaPath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(p.day).toFixed(1)} ${getY(p.dia).toFixed(1)}`).join(' ');
+
+            const y120 = getY(120);
+            const y80 = getY(80);
+
+            let circlesHtml = '';
+            points.forEach(p => {
+                const cx = getX(p.day).toFixed(1);
+                const cySys = getY(p.sys).toFixed(1);
+                const cyDia = getY(p.dia).toFixed(1);
+                circlesHtml += `
+                    <g class="cursor-pointer" onclick="selectDate('${p.dateKey}')">
+                        <circle cx="${cx}" cy="${cySys}" r="4.5" fill="#F43F5E" stroke="${dotStroke}" stroke-width="1.8">
+                            <title>Day ${p.day}: Avg ${p.sys}/${p.dia} mmHg</title>
+                        </circle>
+                        <circle cx="${cx}" cy="${cyDia}" r="4.5" fill="#6366F1" stroke="${dotStroke}" stroke-width="1.8">
+                            <title>Day ${p.day}: Avg ${p.sys}/${p.dia} mmHg</title>
+                        </circle>
+                        <text x="${cx}" y="${height - 6}" font-size="9" text-anchor="middle" fill="${labelFill}">${p.day}</text>
+                    </g>
+                `;
+            });
+
+            container.innerHTML = `
+                <svg viewBox="0 0 ${width} ${height}" class="w-full h-full overflow-visible">
+                    <line x1="${padLeft}" y1="${y120}" x2="${width - padRight}" y2="${y120}" stroke="${gridStroke}" stroke-dasharray="3,3" stroke-width="1"/>
+                    <text x="${padLeft - 6}" y="${y120 + 3}" font-size="9" text-anchor="end" fill="${labelFill}">120</text>
+
+                    <line x1="${padLeft}" y1="${y80}" x2="${width - padRight}" y2="${y80}" stroke="${gridStroke}" stroke-dasharray="3,3" stroke-width="1"/>
+                    <text x="${padLeft - 6}" y="${y80 + 3}" font-size="9" text-anchor="end" fill="${labelFill}">80</text>
+
+                    ${points.length > 1 ? `<path d="${sysPath}" fill="none" stroke="#F43F5E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
+                    ${points.length > 1 ? `<path d="${diaPath}" fill="none" stroke="#6366F1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
+
+                    ${circlesHtml}
+                </svg>
+            `;
+        }
+
+        /**************************************************************
+         * MONTHLY DETAILED TABLE RENDERING
+         **************************************************************/
+        function renderMonthlyTable() {
+            const tbody = document.getElementById('monthly-history-tbody');
+            tbody.innerHTML = '';
+
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            let rowsAdded = 0;
+
+            for (let day = daysInMonth; day >= 1; day--) {
+                const key = formatDateKey(currentYear, currentMonth, day);
+                const rec = bpData[key];
+                const avg = computeDayAverage(rec);
+                if (!avg) continue;
+
+                rowsAdded++;
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/80 dark:hover:bg-white/[0.03] cursor-pointer transition-colors';
+                tr.onclick = () => selectDate(key);
+
+                const formatSlotCell = (sData) => {
+                    if (!isSlotValid(sData)) return '<span class="text-slate-300 dark:text-slate-600">—</span>';
+                    const cat = classifyBP(sData.sys, sData.dia);
+                    const pulText = sData.pul ? `<span class="text-slate-400 dark:text-slate-500 ml-1">(${sData.pul} bpm)</span>` : '';
+                    const timeText = sData.time ? `<span class="text-[10px] text-slate-400 dark:text-slate-500 mr-1">${escapeHtml(sData.time)}</span>` : '';
+                    const noteText = sData.note ? `<div class="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[180px]">${timeText}${escapeHtml(sData.note)}</div>` : (sData.time ? `<div class="text-[10px] text-slate-400 dark:text-slate-500">${timeText}</div>` : '');
+                    return `
+                        <div>
+                            <span class="inline-flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
+                                <span class="w-2 h-2 rounded-full ${cat.dotClass}"></span>
+                                ${sData.sys}/${sData.dia}
+                            </span>
+                            ${pulText}
+                            ${noteText}
+                        </div>
+                    `;
+                };
+
+                const avgCat = classifyBP(avg.sys, avg.dia);
+                tr.innerHTML = `
+                    <td class="py-3 px-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">${formatHumanDate(key)}</td>
+                    <td class="py-3 px-3">${formatSlotCell(rec.morning)}</td>
+                    <td class="py-3 px-3">${formatSlotCell(rec.afternoon)}</td>
+                    <td class="py-3 px-3">${formatSlotCell(rec.evening)}</td>
+                    <td class="py-3 px-3 whitespace-nowrap">
+                        <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold ${avgCat.badgeClass}">
+                            ${avg.sys}/${avg.dia} • ${avgCat.label}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+
+            if (rowsAdded === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-slate-400 dark:text-slate-500">
+                            No blood pressure entries recorded for ${MONTH_NAMES[currentMonth]} ${currentYear}.
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        /**************************************************************
+         * EXPORT / IMPORT / DEMO DATA UTILITIES
+         **************************************************************/
+        function exportJSON() {
+            const dataStr = JSON.stringify(bpData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pulselog-backup-${formatDateKey(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate())}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Backup JSON file downloaded');
+        }
+
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (typeof imported === 'object' && imported !== null) {
+                        bpData = { ...bpData, ...imported };
+                        saveToLocalStorage();
+                        renderAll();
+                        showToast('Data restored successfully!');
+                    } else {
+                        showToast('Invalid JSON backup file format.', 'error');
+                    }
+                } catch (err) {
+                    showToast('Could not parse JSON file.', 'error');
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function exportCSV() {
+            const rows = [['Date', 'Slot', 'Time', 'Systolic (mmHg)', 'Diastolic (mmHg)', 'Pulse (BPM)', 'Category', 'Note']];
+            const sortedDates = Object.keys(bpData).sort();
+
+            sortedDates.forEach(dateKey => {
+                const dayRec = bpData[dateKey];
+                SLOTS.forEach(slot => {
+                    const s = dayRec[slot];
+                    if (isSlotValid(s)) {
+                        const cat = classifyBP(s.sys, s.dia);
+                        rows.push([
+                            dateKey,
+                            slot.charAt(0).toUpperCase() + slot.slice(1),
+                            s.time || DEFAULT_TIMES[slot],
+                            s.sys,
+                            s.dia,
+                            s.pul || '',
+                            cat ? cat.label : '',
+                            `"${(s.note || '').replace(/"/g, '""')}"`
+                        ]);
+                    }
+                });
+            });
+
+            if (rows.length === 1) {
+                showToast('No readings available to export.', 'error');
+                return;
+            }
+
+            const csvContent = rows.map(r => r.join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pulselog-readings-${formatDateKey(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate())}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('CSV spreadsheet downloaded');
+        }
+
+        function loadDemoDataConfirm() {
+            openModal(
+                'Load Sample Readings?',
+                'This will populate the last 10 days with realistic Morning, Afternoon, and Evening blood pressure readings so you can preview the calendar indicators and charts. Existing entries on other dates will be kept.',
+                'Load Sample Data',
+                () => {
+                    generateDemoData();
+                    showToast('Sample blood pressure readings loaded!');
+                }
+            );
+        }
+
+        function generateDemoData() {
+            const sampleNotes = ['Before breakfast', 'Post walk', 'Before bed', 'After coffee', 'Relaxed'];
+            for (let i = 0; i < 10; i++) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const key = formatDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+                bpData[key] = {
+                    morning: {
+                        sys: 115 + Math.floor(Math.random() * 18),
+                        dia: 74 + Math.floor(Math.random() * 12),
+                        pul: 66 + Math.floor(Math.random() * 10),
+                        time: '08:15',
+                        note: sampleNotes[i % sampleNotes.length]
+                    },
+                    afternoon: {
+                        sys: 120 + Math.floor(Math.random() * 20),
+                        dia: 76 + Math.floor(Math.random() * 14),
+                        pul: 70 + Math.floor(Math.random() * 12),
+                        time: '14:30',
+                        note: ''
+                    },
+                    evening: {
+                        sys: 114 + Math.floor(Math.random() * 16),
+                        dia: 72 + Math.floor(Math.random() * 12),
+                        pul: 64 + Math.floor(Math.random() * 10),
+                        time: '21:00',
+                        note: 'Evening check'
+                    }
+                };
+            }
+            saveToLocalStorage();
+            jumpToToday();
+        }
+
+        function confirmEraseAllData() {
+            openModal(
+                'Erase All Stored Data?',
+                'This will permanently remove all blood pressure readings saved in your browser localStorage. Consider downloading a Backup JSON or CSV first.',
+                'Erase Everything',
+                () => {
+                    bpData = {};
+                    localStorage.removeItem(STORAGE_KEY);
+                    renderAll();
+                    showToast('All local storage data erased');
+                }
+            );
+        }
+
+        /**************************************************************
+         * CUSTOM MODAL & TOAST UI HELPERS
+         **************************************************************/
+        function openModal(title, body, confirmLabel, onConfirm) {
+            const overlay = document.getElementById('modal-overlay');
+            const content = document.getElementById('modal-content');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-body').textContent = body;
+
+            const confirmBtn = document.getElementById('modal-confirm');
+            const cancelBtn = document.getElementById('modal-cancel');
+            confirmBtn.textContent = confirmLabel;
+
+            const close = () => {
+                overlay.classList.add('opacity-0');
+                content.classList.add('scale-95');
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                }, 180);
+            };
+
+            confirmBtn.onclick = () => {
+                onConfirm();
+                close();
+            };
+            cancelBtn.onclick = close;
+            overlay.onclick = (e) => {
+                if (e.target === overlay) close();
+            };
+
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            requestAnimationFrame(() => {
+                overlay.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+            });
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgClass = type === 'error'
+                ? 'bg-rose-600 text-white'
+                : 'bg-slate-900 dark:bg-white text-white dark:text-slate-950 border border-white/10';
+            toast.className = `${bgClass} px-4 py-2.5 rounded-2xl shadow-xl text-xs font-semibold flex items-center gap-2 transition-all duration-300 transform translate-y-2 opacity-0`;
+            toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 2600);
+        }
+    </script>
+</body>
+</html>
